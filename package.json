@@ -1,0 +1,36 @@
+{
+  "name": "multi-upload-saas",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "worker": "node -r ts-node/register workers/uploadWorker.ts",
+    "backend": "cd backend && GOTOOLCHAIN=auto FIREBASE_PROJECT_ID=easy-publishing GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json go run ."
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.592.0",
+    "@aws-sdk/s3-request-presigner": "^3.592.0",
+    "@prisma/client": "^5.14.0",
+    "bullmq": "^5.7.9",
+    "google-auth-library": "^9.11.0",
+    "googleapis": "^144.0.0",
+    "ioredis": "^5.4.1",
+    "next": "^14.2.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "prisma": "^5.14.0",
+    "tailwindcss": "^3.4.19",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

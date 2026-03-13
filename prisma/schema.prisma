@@ -1,0 +1,103 @@
+// ... existing generator and datasource ...
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Provider {
+  YOUTUBE
+  TIKTOK
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  PUBLISHED
+  ERROR
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  SCHEDULED
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  name         String?
+  image        String?
+  passwordHash String?         // si vous voulez auth password
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  accounts     SocialAccount[]
+  videos       Video[]
+}
+
+model SocialAccount {
+  id              String    @id @default(cuid())
+  userId          String
+  provider        Provider
+  externalId      String    // id du compte distant (page id, channel id, ig user id, etc.)
+  displayName     String?
+  aliasName       String?   // "YouTube Business", etc.
+  avatarUrl       String?
+  accessToken     String
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  scope           String?
+  meta            Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  uploadTargets   UploadTarget[]
+}
+
+model Video {
+  id             String        @id @default(cuid())
+  userId         String
+  s3Key          String        // clé sur S3/R2
+  title          String
+  description    String?
+  tags           String[]      // Postgres array
+  hashtags       String[]
+  thumbnailKey   String?
+  visibility     Visibility     @default(PUBLIC)
+  scheduledAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id])
+  uploadTargets  UploadTarget[]
+}
+
+model UploadTarget {
+  id             String       @id @default(cuid())
+  videoId        String
+  accountId      String
+  provider       Provider
+  status         UploadStatus  @default(PENDING)
+  progress       Int           @default(0) // 0..100
+  errorMessage   String?
+  remoteId       String?       // youtube video id, fb video id, etc.
+  remoteUrl      String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  startedAt      DateTime?
+  publishedAt    DateTime?
+
+  video          Video         @relation(fields: [videoId], references: [id])
+  account        SocialAccount @relation(fields: [accountId], references: [id])
+
+  @@index([videoId])
+  @@index([accountId])
+  @@index([provider, status])
+}
