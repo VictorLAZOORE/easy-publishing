@@ -1,12 +1,24 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUserId } from '../../lib/useUserId';
+
+function bucketFileDisplayName(fullName: string, userId: string): string {
+  const prefix = userId + '/';
+  let name = fullName.startsWith(prefix) ? fullName.slice(prefix.length) : fullName;
+  const slash = name.indexOf('/');
+  if (slash !== -1) name = name.slice(slash + 1);
+  const dash = name.indexOf('-');
+  if (dash !== -1 && /^\d+$/.test(name.slice(0, dash))) name = name.slice(dash + 1);
+  return name || fullName;
+}
 
 export default function UploadPage() {
   const [userId] = useUserId();
   const [file, setFile] = useState<File | null>(null);
   const [presigned, setPresigned] = useState<{ url: string; key: string } | null>(null);
+  const [bucketFiles, setBucketFiles] = useState<{ name: string; size: number; updated: string }[]>([]);
+  const [bucketFilesLoading, setBucketFilesLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -23,14 +35,43 @@ export default function UploadPage() {
     loadAccounts();
   }, [userId]);
 
+  const loadBucketFiles = useCallback(async () => {
+    setBucketFilesLoading(true);
+    try {
+      const res = await fetch('/api/storage/list', { headers: { 'x-user-id': userId } });
+      const data = await res.json();
+      if (res.ok) setBucketFiles(data.files || []);
+    } finally {
+      setBucketFilesLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadBucketFiles();
+  }, [loadBucketFiles]);
+
   async function loadAccounts() {
     const res = await fetch('/api/accounts/list', { headers: { 'x-user-id': userId } });
     const data = await res.json();
     setAccounts(data.accounts || []);
   }
 
+  function selectLocalFile(f: File | null) {
+    setFile(f);
+    setPresigned(null);
+  }
+
+  function selectBucketFile(key: string) {
+    if (!key) {
+      setPresigned(null);
+      return;
+    }
+    setPresigned({ key, url: '' });
+    setFile(null);
+  }
+
   async function step1Presign() {
-    if (!file) return alert('Sélectionnez un fichier');
+    if (!file) return alert('Sélectionnez un fichier local');
     setLoading(true);
     try {
       const presignRes = await fetch('/api/storage/presign', {
@@ -105,31 +146,63 @@ export default function UploadPage() {
     <div className="space-y-8">
       <h1 className="page-header">Upload vidéo</h1>
 
-      {/* Step 1 — S3 */}
+      {/* Step 1 — Fichier vidéo */}
       <section className="card p-6">
-        <h2 className="section-title">1. Fichier vidéo (S3)</h2>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="btn-secondary cursor-pointer">
-            <input
-              type="file"
-              accept="video/*"
-              className="sr-only"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-            />
-            {file ? file.name : 'Choisir un fichier'}
-          </label>
-          <button
-            type="button"
-            onClick={step1Presign}
-            disabled={!file || loading}
-            className="btn-primary"
-          >
-            {loading ? 'Envoi…' : 'Envoyer vers S3'}
-          </button>
+        <h2 className="section-title">1. Fichier vidéo</h2>
+
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">Envoyer un nouveau fichier ou choisir un fichier déjà dans le bucket.</p>
+
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="btn-secondary cursor-pointer">
+              <input
+                type="file"
+                accept="video/*"
+                className="sr-only"
+                onChange={(e) => selectLocalFile(e.target.files?.[0] || null)}
+              />
+              {file ? file.name : 'Choisir un fichier local'}
+            </label>
+            <button
+              type="button"
+              onClick={step1Presign}
+              disabled={!file || loading}
+              className="btn-primary"
+            >
+              {loading ? 'Envoi…' : 'Envoyer vers le bucket'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <span>— ou —</span>
+          </div>
+
+          <div>
+            <label className="label">Fichier déjà dans le bucket</label>
+            <select
+              className="input max-w-xl"
+              value={presigned && !file ? presigned.key : ''}
+              onChange={(e) => selectBucketFile(e.target.value)}
+              disabled={bucketFilesLoading}
+            >
+              <option value="">Sélectionner un fichier…</option>
+              {bucketFiles.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {bucketFileDisplayName(f.name, userId)}
+                </option>
+              ))}
+            </select>
+            {bucketFilesLoading && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Chargement de la liste…</p>}
+          </div>
         </div>
+
         {presigned && (
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-            ✓ Envoyé sous la clé : <code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">{presigned.key}</code>
+          <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+            {presigned.url ? (
+              <>✓ Envoyé sous la clé : <code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">{presigned.key}</code></>
+            ) : (
+              <>✓ Fichier sélectionné dans le bucket : <code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">{bucketFileDisplayName(presigned.key, userId)}</code></>
+            )}
           </p>
         )}
       </section>
