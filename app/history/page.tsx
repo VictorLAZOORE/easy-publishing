@@ -6,7 +6,7 @@ export default function HistoryPage() {
   return (
     <div className="space-y-8">
       <h1 className="page-header">Historique des uploads</h1>
-      <p className="text-slate-600 max-w-xl">
+      <p className="text-slate-600 dark:text-slate-400 max-w-xl">
         Suivez le statut de vos publications sur chaque plateforme.
       </p>
       <VideoTable />

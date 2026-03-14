@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUserId } from '../../lib/useUserId';
 
 export default function UploadPage() {
-  const [userId, setUserId] = useState<string>('USER_123');
+  const [userId] = useUserId();
   const [file, setFile] = useState<File | null>(null);
   const [presigned, setPresigned] = useState<{ url: string; key: string } | null>(null);
   const [title, setTitle] = useState('');
@@ -15,12 +16,12 @@ export default function UploadPage() {
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [createdVideoId, setCreatedVideoId] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const successRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const id = localStorage.getItem('uid');
-    if (id) setUserId(id);
     loadAccounts();
-  }, []);
+  }, [userId]);
 
   async function loadAccounts() {
     const res = await fetch('/api/accounts/list', { headers: { 'x-user-id': userId } });
@@ -37,19 +38,32 @@ export default function UploadPage() {
         headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify({ filename: file.name, contentType: file.type }),
       }).then((r) => r.json());
-      await fetch(presignRes.url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (presignRes.error) throw new Error(presignRes.error);
+      const uploadRes = await fetch('/api/storage/upload', {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'x-key': presignRes.key, 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || 'Upload failed');
+      }
       setPresigned(presignRes);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erreur lors de l’envoi du fichier');
     } finally {
       setLoading(false);
     }
   }
 
   async function startMultiUpload() {
-    if (!presigned) return alert('Effectuez d’abord l’upload S3');
-    if (!selectedAccounts.length) return alert('Sélectionnez au moins un compte');
+    if (!presigned) return alert('Effectuez d’abord l’envoi du fichier.');
+    if (!selectedAccounts.length) return alert('Sélectionnez au moins un compte.');
     setLoading(true);
+    setCreatedVideoId(null);
+    setPublishError(null);
     try {
-      const res = await fetch('/api/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify({
@@ -61,8 +75,25 @@ export default function UploadPage() {
           visibility,
           scheduledAt: visibility === 'SCHEDULED' ? scheduledAt : null,
         }),
-      }).then((r) => r.json());
-      setCreatedVideoId(res.videoId);
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg = data.error || `Erreur ${response.status}`;
+        setPublishError(msg);
+        return;
+      }
+      const videoId = data.videoId ?? data.targets?.[0]?.videoId;
+      if (!videoId) {
+        setPublishError('Réponse invalide du serveur (pas de videoId)');
+        return;
+      }
+      setCreatedVideoId(videoId);
+      setPublishError(null);
+      // Scroll après que React ait rendu le bloc succès
+      setTimeout(() => successRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Publication échouée';
+      setPublishError(msg);
     } finally {
       setLoading(false);
     }
@@ -72,19 +103,7 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="page-header">Upload vidéo</h1>
-        <div className="flex items-center gap-2">
-          <label className="sr-only">User ID</label>
-          <input
-            className="input max-w-[180px]"
-            placeholder="User ID"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            onBlur={() => localStorage.setItem('uid', userId)}
-          />
-        </div>
-      </div>
+      <h1 className="page-header">Upload vidéo</h1>
 
       {/* Step 1 — S3 */}
       <section className="card p-6">
@@ -109,8 +128,8 @@ export default function UploadPage() {
           </button>
         </div>
         {presigned && (
-          <p className="mt-3 text-sm text-slate-600">
-            ✓ Envoyé sous la clé : <code className="rounded bg-slate-100 px-1.5 py-0.5">{presigned.key}</code>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
+            ✓ Envoyé sous la clé : <code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700 dark:text-slate-300">{presigned.key}</code>
           </p>
         )}
       </section>
@@ -178,15 +197,15 @@ export default function UploadPage() {
       <section className="card p-6">
         <h2 className="section-title">3. Comptes cibles</h2>
         {youtubeAccounts.length === 0 ? (
-          <p className="text-slate-500 text-sm">
-            Aucun compte YouTube connecté. <a href="/accounts" className="text-brand-600 hover:underline">Connecter un compte</a>.
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Aucun compte YouTube connecté. <a href="/accounts" className="text-brand-600 hover:underline dark:text-brand-400">Connecter un compte</a>.
           </p>
         ) : (
           <div className="flex flex-wrap gap-4">
             {youtubeAccounts.map((a: any) => (
               <label
                 key={a.id}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors has-[:checked]:border-brand-300 has-[:checked]:bg-brand-50"
+                className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors has-[:checked]:border-brand-300 has-[:checked]:bg-brand-50 dark:border-slate-600 dark:hover:bg-slate-700 dark:has-[:checked]:border-brand-500 dark:has-[:checked]:bg-brand-500/20"
               >
                 <input
                   type="checkbox"
@@ -196,9 +215,9 @@ export default function UploadPage() {
                       e.target.checked ? [...prev, a.id] : prev.filter((x) => x !== a.id)
                     );
                   }}
-                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-500"
                 />
-                <span className="font-medium text-slate-900">{a.displayName || a.aliasName || a.externalId}</span>
+                <span className="font-medium text-slate-900 dark:text-white">{a.displayName || a.aliasName || a.externalId}</span>
               </label>
             ))}
           </div>
@@ -216,14 +235,23 @@ export default function UploadPage() {
         >
           {loading ? 'Publication…' : 'Publier sur les comptes sélectionnés'}
         </button>
+        {loading && (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Publication en cours, ne quittez pas la page…</p>
+        )}
       </section>
 
+      {publishError && (
+        <div className="card p-4 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+          <p className="font-medium">Erreur de publication</p>
+          <p className="text-sm mt-1">{publishError}</p>
+        </div>
+      )}
       {createdVideoId && (
-        <div className="card p-6 border-brand-200 bg-brand-50">
-          <p className="font-medium text-brand-800">
-            Vidéo créée : <code className="rounded bg-brand-100 px-1.5 py-0.5">{createdVideoId}</code>
+        <div ref={successRef} id="upload-success" className="card p-6 border-brand-200 bg-brand-50 dark:border-brand-700 dark:bg-brand-500/10">
+          <p className="font-medium text-brand-800 dark:text-brand-200">
+            Vidéo créée : <code className="rounded bg-brand-100 px-1.5 py-0.5 dark:bg-brand-500/30 dark:text-brand-100">{createdVideoId}</code>
           </p>
-          <p className="text-sm text-brand-700 mt-1">Suivez le statut dans l’onglet Historique.</p>
+          <p className="text-sm text-brand-700 dark:text-brand-300 mt-1">Suivez le statut dans l’onglet Historique.</p>
         </div>
       )}
     </div>

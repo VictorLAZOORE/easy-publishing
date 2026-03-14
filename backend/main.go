@@ -6,10 +6,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -18,14 +20,31 @@ type Server struct {
 }
 
 type Account struct {
-	ID          string    `json:"id" firestore:"id"`
-	UserID      string    `json:"userId" firestore:"userId"`
-	Provider    string    `json:"provider" firestore:"provider"`
-	ExternalID  string    `json:"externalId" firestore:"externalId"`
-	DisplayName string    `json:"displayName,omitempty" firestore:"displayName,omitempty"`
-	AliasName   string    `json:"aliasName,omitempty" firestore:"aliasName,omitempty"`
-	AvatarURL   string    `json:"avatarUrl,omitempty" firestore:"avatarUrl,omitempty"`
-	CreatedAt   time.Time `json:"createdAt" firestore:"createdAt"`
+	ID              string     `json:"id" firestore:"id"`
+	UserID          string     `json:"userId" firestore:"userId"`
+	Provider        string     `json:"provider" firestore:"provider"`
+	ExternalID      string     `json:"externalId" firestore:"externalId"`
+	DisplayName     string     `json:"displayName,omitempty" firestore:"displayName,omitempty"`
+	AliasName       string     `json:"aliasName,omitempty" firestore:"aliasName,omitempty"`
+	AvatarURL       string     `json:"avatarUrl,omitempty" firestore:"avatarUrl,omitempty"`
+	AccessToken     string     `json:"-" firestore:"accessToken,omitempty"`
+	RefreshToken    string     `json:"-" firestore:"refreshToken,omitempty"`
+	TokenExpiresAt  *time.Time `json:"-" firestore:"tokenExpiresAt,omitempty"`
+	Scope           string     `json:"-" firestore:"scope,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt" firestore:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt" firestore:"updatedAt"`
+}
+
+type AccountUpsertRequest struct {
+	UserID         string  `json:"userId"`
+	Provider       string  `json:"provider"`
+	ExternalID     string  `json:"externalId"`
+	DisplayName    string  `json:"displayName,omitempty"`
+	AvatarURL      string  `json:"avatarUrl,omitempty"`
+	AccessToken    string  `json:"accessToken"`
+	RefreshToken   string  `json:"refreshToken,omitempty"`
+	TokenExpiresAt *string `json:"tokenExpiresAt,omitempty"` // ISO8601
+	Scope          string  `json:"scope,omitempty"`
 }
 
 type Video struct {
@@ -96,6 +115,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /accounts", s.handleAccounts)
+	mux.HandleFunc("POST /accounts/upsert", s.handleAccountsUpsert)
 	mux.HandleFunc("GET /history", s.handleHistory)
 	mux.HandleFunc("GET /uploads/status", s.handleStatus)
 	mux.HandleFunc("POST /upload", s.handleUpload)
@@ -139,16 +159,17 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	iter := s.fs.Collection("accounts").Where("userId", "==", userID).OrderBy("createdAt", firestore.Desc).Documents(ctx)
+	// Requête sans OrderBy pour éviter l’index composite Firestore ; tri en mémoire
+	iter := s.fs.Collection("accounts").Where("userId", "==", userID).Documents(ctx)
 	var accounts []Account
 	for {
 		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			if err.Error() == "iterator done" {
-				break
-			}
 			log.Printf("accounts query error: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load accounts"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load accounts", "details": err.Error()})
 			return
 		}
 		var a Account
@@ -156,8 +177,67 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 			accounts = append(accounts, a)
 		}
 	}
+	// Tri par createdAt décroissant
+	sort.Slice(accounts, func(i, j int) bool { return accounts[i].CreatedAt.After(accounts[j].CreatedAt) })
 
 	writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts})
+}
+
+func (s *Server) handleAccountsUpsert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body AccountUpsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		return
+	}
+	if body.UserID == "" || body.Provider == "" || body.ExternalID == "" || body.AccessToken == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
+		return
+	}
+
+	docID := body.UserID + "-" + body.Provider + "-" + body.ExternalID
+	ref := s.fs.Collection("accounts").Doc(docID)
+	now := time.Now()
+
+	var tokenExpiresAt *time.Time
+	if body.TokenExpiresAt != nil && *body.TokenExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, *body.TokenExpiresAt); err == nil {
+			tokenExpiresAt = &t
+		}
+	}
+
+	acc := Account{
+		ID:             docID,
+		UserID:         body.UserID,
+		Provider:       body.Provider,
+		ExternalID:     body.ExternalID,
+		DisplayName:    body.DisplayName,
+		AvatarURL:      body.AvatarURL,
+		AccessToken:    body.AccessToken,
+		RefreshToken:   body.RefreshToken,
+		TokenExpiresAt: tokenExpiresAt,
+		Scope:          body.Scope,
+		UpdatedAt:      now,
+	}
+
+	existing, err := ref.Get(ctx)
+	if err != nil || !existing.Exists() {
+		acc.CreatedAt = now
+	} else {
+		var existingAcc Account
+		if err := existing.DataTo(&existingAcc); err == nil {
+			acc.CreatedAt = existingAcc.CreatedAt
+		} else {
+			acc.CreatedAt = now
+		}
+	}
+
+	if _, err := ref.Set(ctx, acc); err != nil {
+		log.Printf("accounts upsert error: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save account"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": docID})
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
@@ -180,10 +260,10 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			if err.Error() == "iterator done" {
-				break
-			}
 			log.Printf("history query error: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load history"})
 			return
@@ -192,14 +272,14 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		if err := doc.DataTo(&v); err != nil {
 			continue
 		}
-		targetIter := s.fs.Collection("uploadTargets").Where("videoId", "==", v.ID).OrderBy("createdAt", firestore.Desc).Documents(ctx)
+		targetIter := s.fs.Collection("uploadTargets").Where("videoId", "==", v.ID).Documents(ctx)
 		var targets []UploadTarget
 		for {
 			td, err := targetIter.Next()
+			if err == iterator.Done {
+				break
+			}
 			if err != nil {
-				if err.Error() == "iterator done" {
-					break
-				}
 				break
 			}
 			var t UploadTarget
@@ -234,10 +314,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var recent []UploadTarget
 	for {
 		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			if err.Error() == "iterator done" {
-				break
-			}
 			break
 		}
 		var t UploadTarget

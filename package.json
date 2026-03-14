@@ -11,8 +11,7 @@
     "backend": "cd backend && GOTOOLCHAIN=auto FIREBASE_PROJECT_ID=easy-publishing GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json go run ."
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.592.0",
-    "@aws-sdk/s3-request-presigner": "^3.592.0",
+    "@google-cloud/storage": "^7.19.0",
     "@prisma/client": "^5.14.0",
     "bullmq": "^5.7.9",
     "google-auth-library": "^9.11.0",

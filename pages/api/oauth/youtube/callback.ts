@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { google } from 'googleapis';
-import { prisma } from '../../../../lib/prisma';
 
 function getRedirectUri() {
   const base = process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -28,46 +27,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { tokens } = await oAuth2Client.getToken(code);
   oAuth2Client.setCredentials(tokens);
 
-  // Use the tokens to fetch the channel info for the selected account
   const youtube = google.youtube({ version: 'v3', auth: oAuth2Client });
   const channelRes = await youtube.channels.list({ part: ['snippet'], mine: true });
   const channel = channelRes.data.items?.[0];
   if (!channel) return res.status(400).json({ error: 'No YouTube channel found for this account' });
 
   const accessToken = tokens.access_token!;
-  const refreshToken = tokens.refresh_token || undefined; // Might be undefined if not first consent; ensure prompt=consent
-  const expiryDate = tokens.expiry_date ? new Date(tokens.expiry_date) : undefined;
+  const refreshToken = tokens.refresh_token || undefined;
+  const tokenExpiresAt = tokens.expiry_date
+    ? new Date(tokens.expiry_date).toISOString()
+    : undefined;
 
-  // Upsert SocialAccount for this channel
-  const account = await prisma.socialAccount.upsert({
-    where: {
-      // unique compound alternative would be (userId, provider, externalId), but here we use an id fallback
-      // Use a synthetic unique key via (provider, externalId, userId)
-      id: `${userId}-YOUTUBE-${channel.id}`,
-    },
-    create: {
-      id: `${userId}-YOUTUBE-${channel.id}`,
-      userId,
-      provider: 'YOUTUBE',
-      externalId: channel.id!,
-      displayName: channel.snippet?.title || 'YouTube Channel',
-      avatarUrl: channel.snippet?.thumbnails?.default?.url || undefined,
-      accessToken,
-      refreshToken,
-      tokenExpiresAt: expiryDate,
-      scope: 'youtube.upload youtube.readonly',
-      meta: { kind: channel.kind, country: channel.snippet?.country },
-    },
-    update: {
-      displayName: channel.snippet?.title || undefined,
-      avatarUrl: channel.snippet?.thumbnails?.default?.url || undefined,
-      accessToken,
-      refreshToken: refreshToken || undefined,
-      tokenExpiresAt: expiryDate,
-    },
-  });
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
+  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
 
-  // Redirect back to accounts page
-  const redirectTo = (process.env.APP_BASE_URL || 'http://localhost:3000') + '/accounts?connected=youtube';
-  res.redirect(redirectTo);
+  let upsertRes: Response;
+  try {
+    upsertRes = await fetch(`${backendUrl}/accounts/upsert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        provider: 'YOUTUBE',
+        externalId: channel.id!,
+        displayName: channel.snippet?.title || 'YouTube Channel',
+        avatarUrl: channel.snippet?.thumbnails?.default?.url || undefined,
+        accessToken,
+        refreshToken: refreshToken || '',
+        tokenExpiresAt: tokenExpiresAt || null,
+        scope: 'youtube.upload youtube.readonly',
+      }),
+    });
+  } catch (e) {
+    console.error('Backend unreachable:', e);
+    return res.redirect(`${baseUrl}/accounts?error=backend_unavailable`);
+  }
+
+  if (!upsertRes.ok) {
+    const err = await upsertRes.json().catch(() => ({}));
+    console.error('Backend accounts/upsert failed:', err);
+    return res.redirect(`${baseUrl}/accounts?error=save_failed`);
+  }
+
+  res.redirect(`${baseUrl}/accounts?connected=youtube&userId=${encodeURIComponent(userId)}`);
 }
