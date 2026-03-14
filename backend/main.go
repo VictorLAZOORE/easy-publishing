@@ -6,17 +6,21 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"cloud.google.com/go/firestore"
+	"cloud.google.com/go/storage"
+	"github.com/joho/godotenv"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 type Server struct {
-	fs *firestore.Client
+	fs        *firestore.Client
+	gcsClient *storage.Client
 }
 
 type Account struct {
@@ -84,6 +88,11 @@ type UploadRequest struct {
 }
 
 func main() {
+	// Charger .env (backend/.env ou repo/.env selon d'où on lance)
+	if err := godotenv.Load(".env"); err != nil {
+		_ = godotenv.Load(filepath.Join("..", ".env"))
+	}
+
 	ctx := context.Background()
 
 	projectID := os.Getenv("FIREBASE_PROJECT_ID")
@@ -110,7 +119,16 @@ func main() {
 	}
 	defer fs.Close()
 
-	s := &Server{fs: fs}
+	var gcsClient *storage.Client
+	if credFile != "" {
+		gcsClient, err = storage.NewClient(ctx, option.WithCredentialsFile(credFile))
+		if err != nil {
+			log.Fatalf("error initializing GCS client: %v", err)
+		}
+		defer gcsClient.Close()
+	}
+
+	s := &Server{fs: fs, gcsClient: gcsClient}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -382,8 +400,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			VideoID:   video.ID,
 			AccountID: accID,
 			Provider:  "YOUTUBE",
-			Status:    "PUBLISHED", // pour le MVP: on considère l’upload comme fait
-			Progress:  100,
+			Status:    "UPLOADING",
+			Progress:  0,
 			CreatedAt: now,
 		}
 		batch.Set(tRef, t)
@@ -396,9 +414,56 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Upload vers YouTube pour chaque compte
+	for i := range targets {
+		t := &targets[i]
+		accSnap, err := s.fs.Collection("accounts").Doc(t.AccountID).Get(ctx)
+		if err != nil {
+			s.setTargetError(ctx, t.ID, "compte introuvable")
+			t.Status = "ERROR"
+			t.Error = "compte introuvable"
+			continue
+		}
+		var acc Account
+		if err := accSnap.DataTo(&acc); err != nil {
+			s.setTargetError(ctx, t.ID, "compte invalide")
+			t.Status = "ERROR"
+			t.Error = "compte invalide"
+			continue
+		}
+		if acc.AccessToken == "" {
+			s.setTargetError(ctx, t.ID, "token manquant, reconnectez le compte")
+			t.Status = "ERROR"
+			t.Error = "token manquant"
+			continue
+		}
+		if err := s.uploadVideoToYouTube(ctx, video, *t, acc); err != nil {
+			log.Printf("YouTube upload failed for target %s: %v", t.ID, err)
+			s.setTargetError(ctx, t.ID, err.Error())
+			t.Status = "ERROR"
+			t.Error = err.Error()
+		} else {
+			t.Status = "PUBLISHED"
+			t.Progress = 100
+			// remoteId/remoteUrl sont mis à jour dans uploadVideoToYouTube
+			tRef := s.fs.Collection("uploadTargets").Doc(t.ID)
+			if snap, _ := tRef.Get(ctx); snap.Exists() {
+				_ = snap.DataTo(t)
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"videoId": video.ID,
 		"targets": targets,
+	})
+}
+
+func (s *Server) setTargetError(ctx context.Context, targetID, errMsg string) {
+	tRef := s.fs.Collection("uploadTargets").Doc(targetID)
+	_, _ = tRef.Update(ctx, []firestore.Update{
+		{Path: "status", Value: "ERROR"},
+		{Path: "errorMessage", Value: errMsg},
 	})
 }
 

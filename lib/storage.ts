@@ -58,3 +58,23 @@ export async function getObjectContentLength(key: string): Promise<number | null
   }
 }
 
+export type BucketFile = { name: string; size: number; updated: string };
+
+export async function listBucketFiles(prefix?: string, maxResults = 200): Promise<BucketFile[]> {
+  const [files] = await bucket.getFiles({ prefix: prefix || '', maxResults });
+  const result: BucketFile[] = [];
+  for (const file of files) {
+    try {
+      const [meta] = await file.getMetadata();
+      result.push({
+        name: file.name,
+        size: Number(meta.size || 0),
+        updated: meta.updated || '',
+      });
+    } catch {
+      result.push({ name: file.name, size: 0, updated: '' });
+    }
+  }
+  return result;
+}
+
