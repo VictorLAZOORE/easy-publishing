@@ -2,10 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { google } from 'googleapis';
 import { SESSION_COOKIE_NAME } from '../../../../lib/auth/session';
 import { verifySessionToken } from '../../../../lib/auth/jwt';
+import { getAppBaseUrl } from '../../../../lib/env';
 
 function getRedirectUri() {
-  const base = process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
-  return `${base.replace(/\/$/, '')}/api/oauth/youtube/callback`;
+  return `${getAppBaseUrl()}/api/oauth/youtube/callback`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!userId) {
     const cookieHeader = req.headers.cookie || '';
     const token = cookieHeader.match(new RegExp(`(?:^|; )${SESSION_COOKIE_NAME}=([^;]*)`))?.[1];
-    const secret = process.env.AUTH_SECRET || '';
+    const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || '';
     const session = token ? await verifySessionToken(decodeURIComponent(token), secret) : null;
     userId = session?.uid;
   }
@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : undefined;
 
   const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
-  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const baseUrl = getAppBaseUrl();
 
   let upsertRes: Response;
   try {

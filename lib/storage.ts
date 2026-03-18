@@ -2,7 +2,21 @@ import { Storage } from '@google-cloud/storage';
 import type { Readable } from 'stream';
 
 const bucketName = process.env.GCS_BUCKET!;
-const storage = new Storage();
+
+function getStorageClient() {
+  const credJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (credJson) {
+    try {
+      const cred = typeof credJson === 'string' ? JSON.parse(credJson) : credJson;
+      return new Storage({ credentials: cred });
+    } catch {
+      return new Storage();
+    }
+  }
+  return new Storage();
+}
+
+const storage = getStorageClient();
 const bucket = storage.bucket(bucketName);
 
 /** Upload a stream to GCS (avoids CORS by proxying through the server). */

@@ -1,11 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { google } from 'googleapis';
 import { getSessionFromApiRequest } from '../../../../lib/auth/session';
+import { getAppBaseUrl } from '../../../../lib/env';
 
 function getRedirectUri() {
-  // Prefer explicit APP_BASE_URL, fallback to NEXTAUTH_URL for local dev
-  const base = process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
-  return `${base.replace(/\/$/, '')}/api/oauth/youtube/callback`;
+  return `${getAppBaseUrl()}/api/oauth/youtube/callback`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
