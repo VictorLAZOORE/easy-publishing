@@ -1,11 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUploadUrl } from '../../../lib/storage';
-// import { getServerSession } from 'next-auth';
+import { getSessionFromApiRequest } from '../../../lib/auth/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // const session = await getServerSession(req, res, /* nextAuthOptions */);
-  // Fallback MVP: accept x-user-id header if NextAuth not configured yet
-  const userId = (req.headers['x-user-id'] as string) || (req.body?.userId as string);
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
   if (!userId) return res.status(401).json({ error: 'Missing user context' });
 
   const { filename, contentType } = req.body;

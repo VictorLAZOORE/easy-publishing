@@ -2,23 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import ProgressBar from './ProgressBar';
-import { useUserId } from '../lib/useUserId';
 
 export default function VideoTable() {
-  const [userId] = useUserId();
   const [videos, setVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/history/list', { headers: { 'x-user-id': userId } });
+      const res = await fetch('/api/history/list');
       const data = await res.json();
       setVideos(data.videos || []);
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     load();

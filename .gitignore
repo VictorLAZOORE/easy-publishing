@@ -2,5 +2,6 @@ node_modules
 .env
 .next
 backend/firebase-service-account.json
+*-firebase-adminsdk-*.json
 backend/easy-publishing-backend
 project/*

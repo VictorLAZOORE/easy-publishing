@@ -2,25 +2,35 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'uid';
-const DEFAULT_USER_ID = 'default';
+const DEFAULT_USER_ID = '';
 
 export function useUserId(): [string, (id: string) => void] {
   const [userId, setUserIdState] = useState(DEFAULT_USER_ID);
 
   useEffect(() => {
-    setUserIdState(typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY) || DEFAULT_USER_ID) : DEFAULT_USER_ID);
+    let alive = true;
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return;
+        setUserIdState(data?.user?.id || DEFAULT_USER_ID);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setUserIdState(DEFAULT_USER_ID);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const setUserId = useCallback((id: string) => {
-    localStorage.setItem(STORAGE_KEY, id);
-    setUserIdState(id);
+    setUserIdState(id || DEFAULT_USER_ID);
   }, []);
 
   return [userId, setUserId];
 }
 
 export function getUserIdForApi(): string {
-  if (typeof window === 'undefined') return DEFAULT_USER_ID;
-  return localStorage.getItem(STORAGE_KEY) || DEFAULT_USER_ID;
+  return DEFAULT_USER_ID;
 }

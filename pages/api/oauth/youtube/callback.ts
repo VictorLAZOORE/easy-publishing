@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { google } from 'googleapis';
+import { SESSION_COOKIE_NAME } from '../../../../lib/auth/session';
+import { verifySessionToken } from '../../../../lib/auth/jwt';
 
 function getRedirectUri() {
   const base = process.env.APP_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -16,7 +18,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       userId = parsed.userId;
     }
   } catch {}
-  if (!userId) return res.status(400).json({ error: 'Missing user context (state.userId)' });
+  if (!userId) {
+    const cookieHeader = req.headers.cookie || '';
+    const token = cookieHeader.match(new RegExp(`(?:^|; )${SESSION_COOKIE_NAME}=([^;]*)`))?.[1];
+    const secret = process.env.AUTH_SECRET || '';
+    const session = token ? await verifySessionToken(decodeURIComponent(token), secret) : null;
+    userId = session?.uid;
+  }
+  if (!userId) return res.status(400).json({ error: 'Missing user context' });
 
   const oAuth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID!,
@@ -69,5 +78,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.redirect(`${baseUrl}/accounts?error=save_failed`);
   }
 
-  res.redirect(`${baseUrl}/accounts?connected=youtube&userId=${encodeURIComponent(userId)}`);
+  res.redirect(`${baseUrl}/accounts?connected=youtube`);
 }

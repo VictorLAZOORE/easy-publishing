@@ -3,7 +3,7 @@ import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!);
 
-export const uploadQueue = new Queue('upload-queue', { connection });
+export const uploadQueue = new Queue('upload-queue', { connection: connection as any });
 
 export type UploadJobData = {
   uploadTargetId: string;

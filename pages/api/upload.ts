@@ -1,8 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getSessionFromApiRequest } from '../../lib/auth/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
-  const userId = (req.headers['x-user-id'] as string) || (req.body?.userId as string);
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
   if (!userId) return res.status(401).json({ error: 'Missing user context' });
 
   const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';

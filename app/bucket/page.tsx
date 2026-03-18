@@ -64,7 +64,7 @@ export default function BucketPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/storage/list', { headers: { 'x-user-id': userId } });
+      const res = await fetch('/api/storage/list');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erreur');
       setFiles(data.files || []);
@@ -99,7 +99,7 @@ export default function BucketPage() {
   };
 
   async function loadAccounts() {
-    const res = await fetch('/api/accounts/list', { headers: { 'x-user-id': userId } });
+    const res = await fetch('/api/accounts/list');
     const data = await res.json();
     setAccounts(data.accounts || []);
   }
@@ -110,13 +110,13 @@ export default function BucketPage() {
     try {
       const presignRes = await fetch('/api/storage/presign', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: addFile.name, contentType: addFile.type }),
       }).then((r) => r.json());
       if (presignRes.error) throw new Error(presignRes.error);
       const uploadRes = await fetch('/api/storage/upload', {
         method: 'POST',
-        headers: { 'x-user-id': userId, 'x-key': presignRes.key, 'Content-Type': addFile.type || 'application/octet-stream' },
+        headers: { 'x-key': presignRes.key, 'Content-Type': addFile.type || 'application/octet-stream' },
         body: addFile,
       });
       if (!uploadRes.ok) throw new Error('Upload échoué');
@@ -155,7 +155,7 @@ export default function BucketPage() {
     try {
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accounts: pubAccounts,
           s3Key: publishFlow.key,
@@ -189,16 +189,34 @@ export default function BucketPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="page-header">Vidéos sur le bucket</h1>
-      <p className="text-slate-600 dark:text-slate-400 max-w-xl">
-        Ajoutez des vidéos, consultez-les ou publiez-les sur vos chaînes.
-      </p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h1 className="page-header">Bucket</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-xl">
+            Ajoutez vos vidéos, prévisualisez-les, puis publiez-les sur vos chaînes YouTube.
+          </p>
+        </div>
+        <a href="/accounts" className="btn btn-secondary">
+          Gérer les comptes
+        </a>
+      </div>
 
       {/* Ajouter une vidéo */}
-      <section className="card p-6">
-        <h2 className="section-title">Ajouter une vidéo</h2>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="btn-secondary cursor-pointer">
+      <section className="card-soft p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Ajouter une vidéo</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Le fichier sera stocké dans GCS sous <code className="rounded bg-black/5 px-1.5 py-0.5 dark:bg-white/10">{userId}/…</code>
+            </p>
+          </div>
+          <span className="text-xs rounded-full px-2.5 py-1 bg-brand-500/10 ring-1 ring-brand-500/15 text-slate-700 dark:text-slate-200">
+            Stockage
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 mt-5">
+          <label className="btn btn-secondary cursor-pointer">
             <input
               type="file"
               accept="video/*"
@@ -211,7 +229,7 @@ export default function BucketPage() {
             type="button"
             onClick={uploadNewVideo}
             disabled={!addFile || addLoading}
-            className="btn-primary"
+            className="btn btn-primary"
           >
             {addLoading ? 'Envoi…' : 'Envoyer vers le bucket'}
           </button>
@@ -244,7 +262,7 @@ export default function BucketPage() {
               <div className="py-4">
                 <p className="font-medium text-brand-800 dark:text-brand-200 text-lg">✓ Publication réussie</p>
                 <p className="text-sm text-brand-700 dark:text-brand-300 mt-2">La vidéo sera visible dans l’historique.</p>
-                <button type="button" onClick={cancelPublishFlow} className="btn-primary mt-6 w-full">
+                <button type="button" onClick={cancelPublishFlow} className="btn btn-primary mt-6 w-full">
                   OK
                 </button>
               </div>
@@ -307,7 +325,7 @@ export default function BucketPage() {
                 <button
                   type="button"
                   onClick={() => setPublishFlow((f) => f && { ...f, step: 2 })}
-                  className="btn-primary w-full mt-6"
+                  className="btn btn-primary w-full mt-6"
                 >
                   Suivant →
                 </button>
@@ -342,14 +360,14 @@ export default function BucketPage() {
                   </div>
                 )}
                 <div className="flex gap-3 mt-6">
-                  <button type="button" onClick={() => setPublishFlow((f) => f && { ...f, step: 1 })} className="btn-ghost flex-1">
+                  <button type="button" onClick={() => setPublishFlow((f) => f && { ...f, step: 1 })} className="btn btn-ghost flex-1">
                     ← Retour
                   </button>
                   <button
                     type="button"
                     onClick={() => setPublishFlow((f) => f && { ...f, step: 3 })}
                     disabled={!pubAccounts.length}
-                    className="btn-primary flex-1"
+                    className="btn btn-primary flex-1"
                   >
                     Suivant →
                   </button>
@@ -363,14 +381,14 @@ export default function BucketPage() {
                 </p>
                 {publishError && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{publishError}</p>}
                 <div className="flex gap-3">
-                  <button type="button" onClick={() => setPublishFlow((f) => f && { ...f, step: 2 })} className="btn-ghost flex-1">
+                  <button type="button" onClick={() => setPublishFlow((f) => f && { ...f, step: 2 })} className="btn btn-ghost flex-1">
                     ← Retour
                   </button>
                   <button
                     type="button"
                     onClick={doPublish}
                     disabled={publishLoading || !pubAccounts.length}
-                    className="btn-primary flex-1"
+                    className="btn btn-primary flex-1"
                   >
                     {publishLoading ? 'Publication…' : 'Publier'}
                   </button>
@@ -383,7 +401,15 @@ export default function BucketPage() {
 
       {/* Liste des vidéos */}
       <section>
-        <h2 className="section-title mb-4">Vidéos dans le bucket</h2>
+        <div className="flex items-end justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Vidéos</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Cliquez sur Publier pour démarrer le flow guidé.</p>
+          </div>
+          <button type="button" onClick={load} className="btn btn-ghost">
+            Rafraîchir
+          </button>
+        </div>
         {error && (
           <div className="card p-4 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 text-red-800 dark:text-red-200 mb-4">
             <p>{error}</p>
@@ -405,11 +431,11 @@ export default function BucketPage() {
             Aucun fichier. Ajoutez une vidéo ci-dessus.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {files.map((f) => (
               <div
                 key={f.name}
-                className="card p-0 overflow-hidden text-left"
+                className="card p-0 overflow-hidden text-left hover:shadow-lg transition-shadow"
               >
                 <div className="aspect-video bg-slate-900 relative group">
                   <video
@@ -440,7 +466,7 @@ export default function BucketPage() {
                   <button
                     type="button"
                     onClick={() => startPublishFlow(f.name)}
-                    className="mt-3 w-full btn-primary text-sm py-2"
+                    className="mt-4 w-full btn btn-primary"
                   >
                     Publier
                   </button>

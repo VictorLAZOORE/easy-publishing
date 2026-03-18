@@ -1,13 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { listBucketFiles, getReadUrl } from '../../../lib/storage';
+import { getSessionFromApiRequest } from '../../../lib/auth/session';
 
 const MAX_FILES_WITH_URL = 30;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const userId = req.headers['x-user-id'] as string;
-  const prefix = userId ? `${userId}/` : undefined;
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
+  if (!userId) return res.status(401).json({ error: 'Missing user context' });
+  const prefix = `${userId}/`;
 
   try {
     const files = await listBucketFiles(prefix, MAX_FILES_WITH_URL);

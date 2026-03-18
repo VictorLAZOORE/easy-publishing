@@ -2,10 +2,12 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
 import { enqueueUpload } from '../../../lib/queue';
 import { Provider } from '@prisma/client';
+import { getSessionFromApiRequest } from '../../../lib/auth/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
-  const userId = (req.headers['x-user-id'] as string) || (req.body?.userId as string);
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
   if (!userId) return res.status(401).json({ error: 'Missing user context' });
 
   const { s3Key, title, description, tags, hashtags, thumbnailKey, visibility, scheduledAt, accountIds } = req.body as any;

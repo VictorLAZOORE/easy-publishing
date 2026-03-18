@@ -45,7 +45,8 @@ export async function getReadUrl(key: string, expiresIn = 3600) {
     action: 'read',
     expires: Date.now() + expiresIn * 1000,
   });
-  return url;
+  // Corriger https:/ en https:// pour éviter les requêtes relatives
+  return url.replace(/^https:\/(?!\/)/, 'https://');
 }
 
 export async function getObjectContentLength(key: string): Promise<number | null> {

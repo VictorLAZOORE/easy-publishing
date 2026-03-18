@@ -5,10 +5,12 @@ const AccountsList = dynamic(() => import('../../components/AccountsList'), { ss
 export default function AccountsPage() {
   return (
     <div className="space-y-8">
-      <h1 className="page-header">Comptes connectés</h1>
-      <p className="text-slate-600 dark:text-slate-400 max-w-xl">
-        Connectez vos comptes YouTube pour publier vos vidéos en un clic sur plusieurs chaînes.
-      </p>
+      <div>
+        <h1 className="page-header">Comptes</h1>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-xl">
+          Connectez vos chaînes YouTube pour publier en quelques clics.
+        </p>
+      </div>
       <AccountsList />
     </div>
   );

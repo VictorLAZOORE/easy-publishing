@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { google } from 'googleapis';
+import { getSessionFromApiRequest } from '../../../../lib/auth/session';
 
 function getRedirectUri() {
   // Prefer explicit APP_BASE_URL, fallback to NEXTAUTH_URL for local dev
@@ -8,8 +9,8 @@ function getRedirectUri() {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // For MVP, accept x-user-id header to bind the account. Replace with NextAuth session in production.
-  const userId = (req.headers['x-user-id'] as string) || (req.query.userId as string);
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
   if (!userId) return res.status(401).json({ error: 'Missing user context' });
 
   const oAuth2Client = new google.auth.OAuth2(

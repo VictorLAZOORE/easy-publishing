@@ -44,7 +44,7 @@ const worker = new Worker('upload-queue', async (job: Job) => {
   } catch (e: any) {
     await prisma.uploadTarget.update({ where: { id: target.id }, data: { status: 'ERROR', errorMessage: e?.message ?? 'Unknown error' } });
   }
-}, { connection, concurrency: 5 });
+}, { connection: connection as any, concurrency: 5 });
 
 worker.on('completed', (job) => console.log('completed', job.id));
 worker.on('failed', (job, err) => console.error('failed', job?.id, err));

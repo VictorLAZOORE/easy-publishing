@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { uploadStream } from '../../../lib/storage';
+import { getSessionFromApiRequest } from '../../../lib/auth/session';
 
 export const config = {
   api: { bodyParser: false },
@@ -8,9 +9,10 @@ export const config = {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const userId = req.headers['x-user-id'] as string;
+  const session = await getSessionFromApiRequest(req);
+  const userId = session?.uid;
   const key = req.headers['x-key'] as string;
-  if (!userId || !key) return res.status(400).json({ error: 'Missing x-user-id or x-key header' });
+  if (!userId || !key) return res.status(400).json({ error: 'Missing user context or x-key header' });
 
   if (!key.startsWith(userId + '/')) return res.status(403).json({ error: 'Key must be under user path' });
 

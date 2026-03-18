@@ -15,24 +15,38 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="page-header">Paramètres</h1>
+      <div>
+        <h1 className="page-header">Paramètres</h1>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-xl">
+          Personnalisez l’apparence et le comportement de l’application.
+        </p>
+      </div>
 
       <section className="card p-6">
-        <h2 className="section-title">Apparence</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-          Choisissez le thème de l’application. Le thème « Système » suit les préférences de votre appareil.
-        </p>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Apparence</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              Choisissez le thème. « Système » suit les préférences de votre appareil.
+            </p>
+          </div>
+          <span className="text-xs rounded-full px-2.5 py-1 bg-brand-500/10 text-slate-700 dark:text-slate-200 ring-1 ring-brand-500/15">
+            Actuel : <strong>{resolved === 'dark' ? 'Sombre' : 'Clair'}</strong>
+            {theme === 'system' && ' (système)'}
+          </span>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
           {options.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => setTheme(opt.value)}
               className={`
-                flex flex-col items-start rounded-xl border-2 px-5 py-4 text-left transition-all
+                flex flex-col items-start rounded-2xl border px-5 py-4 text-left transition-all
                 ${theme === opt.value
-                  ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-500/10'
-                  : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500'
+                  ? 'border-brand-500/40 bg-brand-500/10 ring-1 ring-brand-500/20'
+                  : 'border-slate-200/80 bg-white/60 hover:bg-white dark:border-slate-700/80 dark:bg-slate-900/30 dark:hover:bg-slate-900/50'
                 }
               `}
             >
@@ -41,10 +55,6 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
-          Thème actuel : <strong>{resolved === 'dark' ? 'Sombre' : 'Clair'}</strong>
-          {theme === 'system' && ' (système)'}
-        </p>
       </section>
     </div>
   );

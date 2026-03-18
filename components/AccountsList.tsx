@@ -2,41 +2,31 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useUserId } from '../lib/useUserId';
 
 export default function AccountsList() {
-  const searchParams = useSearchParams();
-  const [userId, setUserId] = useUserId();
+  const searchParams = useSearchParams() ?? new URLSearchParams();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const error = searchParams.get('error');
   const connected = searchParams.get('connected');
-  const userIdFromUrl = searchParams.get('userId');
 
-  const load = useCallback(async (overrideUserId?: string) => {
-    const id = overrideUserId ?? userId;
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/accounts/list', { headers: { 'x-user-id': id } });
+      const res = await fetch('/api/accounts/list');
       const data = await res.json();
       setAccounts(data.accounts || []);
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, []);
 
-  // Au retour OAuth : prendre le userId de l’URL et charger la liste tout de suite avec
   useEffect(() => {
-    if (userIdFromUrl) {
-      setUserId(userIdFromUrl);
-      load(userIdFromUrl);
-    } else {
-      load();
-    }
-  }, [userIdFromUrl, setUserId, load]);
+    load();
+  }, [load]);
 
-  const connectUrl = `/api/oauth/youtube/start?userId=${encodeURIComponent(userId)}`;
+  const connectUrl = `/api/oauth/youtube/start`;
 
   return (
     <div className="space-y-6">
@@ -56,7 +46,7 @@ export default function AccountsList() {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <a href={connectUrl} className="btn-primary">
+        <a href={connectUrl} className="btn btn-primary">
           Ajouter un compte YouTube
         </a>
       </div>
@@ -70,7 +60,7 @@ export default function AccountsList() {
         ) : accounts.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-slate-600 dark:text-slate-400">Aucun compte connecté.</p>
-            <a href={connectUrl} className="btn-primary mt-4 inline-block">
+            <a href={connectUrl} className="btn btn-primary mt-4 inline-block">
               Connecter un compte YouTube
             </a>
           </div>
